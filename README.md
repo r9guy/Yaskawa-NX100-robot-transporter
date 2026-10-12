@@ -1,0 +1,2 @@
+# Yaskawa NX100 robot transporter
+Back in 2014 I made a Robot Linear Track. I used not very polular feature of motoman NX100( and above) controllers called ESERVER, motoman also calls it Ethernet Server, or DATA-TRANSMISSION-FUNCTION in other words Motorman without fieldbus this a way to access and manipulate the robot. I wrote a smal program which was reading robot's resister and moving the carret to the position. I hope it will be useful for anyone looking to communicate with Motman with TwinCAT

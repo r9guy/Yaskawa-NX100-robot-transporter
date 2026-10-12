@@ -1,0 +1,111 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.16">
+  <POU Name="FB_IOREAD" Id="{f018263e-9837-4b4b-9b5c-83f62e890e33}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK FB_IOREAD
+VAR_INPUT
+	bEnable:BOOL;
+	RemoteMachine : T_REMOTE_MACHINE;
+	StartContactPoint:DWORD;
+	(*should be multiples of 8*)
+	NumberOfContactPoints:WORD(8..16384);
+END_VAR
+VAR_OUTPUT
+	bDone:BOOL;
+	bBusy: BOOL;
+	bError: BOOL;
+	ContactPoints:ARRAY[0..9] OF BYTE;
+END_VAR
+VAR
+	ESERVER: FB_ESERVER;
+	eState:(IDLE,COMPOSE,EXECUTE,PARSE,SUCCESS_DONE,SUCCESS_PARSE,ABNORMAL_ANSWER,SOCKET_ERROR,SERVER_ERROR,DONE,ERROR);
+	sAnswer: STRING(255);
+	delimiter: ARRAY[0..100]OF UINT;
+	i: UINT;
+	length: UINT;
+	position:UINT;
+END_VAR]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[eServer.RemoteMachine:=RemoteMachine;
+eServer.eCommand:=E_COMMAND.IOREAD;
+
+
+CASE	eState OF
+IDLE:
+	bBusy:=FALSE;
+	IF	bEnable	THEN
+		eState:=COMPOSE;
+		bDone:=FALSE;
+		bBusy:=TRUE;
+		bError:=FALSE;
+	END_IF;
+COMPOSE:
+	eServer.sCommandData:='';
+	eServer.sCommandData:=CONCAT(eServer.sCommandData,DWORD_TO_STRING(StartContactPoint));
+	eServer.sCommandData:=CONCAT(eServer.sCommandData,',');
+	eServer.sCommandData:=CONCAT(eServer.sCommandData,WORD_TO_STRING(NumberOfContactPoints));
+	eServer.sCommandData:=CONCAT(eServer.sCommandData,'$R');
+	eState:=EXECUTE;
+EXECUTE:
+	eServer.bExecute:=TRUE;
+	eServer();
+	IF	eServer.bDone	THEN
+		eState:=PARSE;
+		eServer.bExecute:=FALSE;
+		eServer();
+	ELSIF	eServer.bError	THEN
+		eState:=SERVER_ERROR;
+		eServer.bExecute:=FALSE;
+		eServer();
+	END_IF;
+PARSE:
+	IF	eServer.sAnswer='0000$R$N' THEN
+		eState:=SUCCESS_DONE;;
+	ELSIF	RIGHT(eServer.sAnswer,1)='$R'	THEN
+		eState:=SUCCESS_PARSE;
+	ELSIF	LEFT(eServer.sAnswer,6)='ERROR: ['	THEN
+		eState:=ABNORMAL_ANSWER;
+	ELSE
+		eState:=SOCKET_ERROR;
+	END_IF;
+SUCCESS_DONE:
+	eState:=DONE;
+SUCCESS_PARSE:
+		sAnswer:=eServer.sAnswer;
+		FOR i:=0 TO (SIZEOF(delimiter)/2)-1 DO
+			delimiter[i]:=0;
+		END_FOR;
+		FOR i:=1 TO (SIZEOF(delimiter)/2)-1 DO
+			delimiter[i]:=delimiter[i-1]+FIND(sAnswer,',');
+			IF	delimiter[i]=delimiter[i-1]	THEN
+				delimiter[i]:=delimiter[i]+FIND(sAnswer,'$R');
+				EXIT;
+			END_IF;
+			sAnswer:=DELETE(sAnswer,delimiter[i],1);
+		END_FOR;
+
+		FOR i:=1 TO  NumberOfContactPoints/8 DO
+			length:=delimiter[i]-delimiter[i-1]-1;
+			position:=delimiter[i-1]+1;
+			ContactPoints[i-1]:=STRING_TO_BYTE(MID(eServer.sAnswer,length,position));
+		END_FOR;;
+
+		eState:=DONE;
+ABNORMAL_ANSWER:
+	eState:=ERROR;
+SOCKET_ERROR:
+	eState:=ERROR;
+SERVER_ERROR:
+	eState:=ERROR;
+DONE:
+	bDone:=TRUE;
+	eState:=IDLE;
+ERROR:
+	bError:=TRUE;
+	eState:=IDLE;
+END_CASE;]]></ST>
+    </Implementation>
+    <LineIds Name="FB_IOREAD">
+      <LineId Id="23" Count="77" />
+    </LineIds>
+  </POU>
+</TcPlcObject>

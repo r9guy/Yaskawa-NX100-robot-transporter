@@ -1,0 +1,112 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.16">
+  <POU Name="FB_RJSEQ" Id="{ce2a8f52-a3a6-4999-a18b-9477c903085c}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK FB_RJSEQ
+VAR_INPUT
+	bEnable:BOOL;
+	RemoteMachine : T_REMOTE_MACHINE;
+END_VAR
+VAR_OUTPUT
+	bDone:BOOL;
+	SEQUENCE:T_ST_RJSEQ;
+	bBusy: BOOL;
+	bError: BOOL;
+END_VAR
+VAR
+	Data:ARRAY[1..3] OF STRING(255);
+	ESERVER: FB_ESERVER;
+	eState:(IDLE,COMPOSE,EXECUTE,PARSE,SUCCESS_DONE,SUCCESS_PARSE,ABNORMAL_ANSWER,SOCKET_ERROR,SERVER_ERROR,DONE,ERROR);
+	delimiter: ARRAY[0..100]OF UINT;
+	i: UINT;
+	sAnswer: STRING;
+	length: UINT;
+	position: UINT;
+END_VAR]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[eServer.RemoteMachine:=RemoteMachine;
+eServer.eCommand:=E_COMMAND.RJSEQ;
+
+
+CASE	eState OF
+IDLE:
+	bBusy:=FALSE;
+	IF	bEnable	THEN
+		eState:=COMPOSE;
+		bDone:=FALSE;
+		bBusy:=TRUE;
+		bError:=FALSE;
+	END_IF;
+COMPOSE:
+	eState:=EXECUTE;
+EXECUTE:
+	eServer.bExecute:=TRUE;
+	eServer();
+	IF	eServer.bDone	THEN
+		eState:=PARSE;
+		eServer.bExecute:=FALSE;
+		eServer();
+	ELSIF	eServer.bError	THEN
+		eState:=SERVER_ERROR;
+		eServer.bExecute:=FALSE;
+		eServer();
+	END_IF;
+PARSE:
+	IF	eServer.sAnswer='0000$R$N' THEN
+		eState:=SUCCESS_DONE;;
+	ELSIF	RIGHT(eServer.sAnswer,1)='$R'	THEN
+		eState:=SUCCESS_PARSE;
+	ELSIF	LEFT(eServer.sAnswer,6)='ERROR: ['	THEN
+		eState:=ABNORMAL_ANSWER;
+	ELSE
+		eState:=SOCKET_ERROR;
+	END_IF;
+SUCCESS_DONE:
+	eState:=DONE;
+SUCCESS_PARSE:
+	sAnswer:=eServer.sAnswer;
+
+	FOR i:=0 TO (SIZEOF(delimiter)/2)-1 DO
+		delimiter[i]:=0;
+	END_FOR;
+
+	FOR i:=1 TO (SIZEOF(delimiter)/2)-1 DO
+		delimiter[i]:=delimiter[i-1]+FIND(sAnswer,',');
+		IF	delimiter[i]=delimiter[i-1]	THEN
+			delimiter[i]:=delimiter[i]+FIND(sAnswer,'$R');
+			EXIT;
+		END_IF;
+		sAnswer:=DELETE(sAnswer,delimiter[i],1);
+	END_FOR;
+
+(* this part is different from operation to operation*)
+	FOR i:=1 TO SIZEOF(Data)/256 DO
+		length:=delimiter[i]-delimiter[i-1]-1;
+		position:=delimiter[i-1]+1;
+		Data[i]:=MID(eServer.sAnswer,length,position);
+	END_FOR;
+
+	SEQUENCE.ReadJobName:=Data[1];
+	SEQUENCE.ReadLineNumber:=STRING_TO_WORD(Data[2]);
+	SEQUENCE.ReadStepNumber:=STRING_TO_WORD(Data[3]);
+(*************************************************************)
+
+	eState:=DONE;
+ABNORMAL_ANSWER:
+	eState:=ERROR;
+SOCKET_ERROR:
+	eState:=ERROR;
+SERVER_ERROR:
+	eState:=ERROR;
+DONE:
+	bDone:=TRUE;
+	eState:=IDLE;
+ERROR:
+	bError:=TRUE;
+	eState:=IDLE;
+END_CASE;]]></ST>
+    </Implementation>
+    <LineIds Name="FB_RJSEQ">
+      <LineId Id="21" Count="80" />
+    </LineIds>
+  </POU>
+</TcPlcObject>

@@ -1,0 +1,16 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.16">
+  <DUT Name="E_DATA_TYPE" Id="{0121ddb1-bccd-4d58-8818-6a3853086f75}">
+    <Declaration><![CDATA[TYPE E_DATA_TYPE :
+(
+	BYTE_TYPE,
+	INTEGER_TYPE,
+	DOUBLE_TYPE,
+	REAL_TYPE,
+	ROBOT_AXIS_TYPE,
+	BASE_AXIS_TYPE,
+	STATION_AXIS_TYPE
+);
+END_TYPE]]></Declaration>
+  </DUT>
+</TcPlcObject>

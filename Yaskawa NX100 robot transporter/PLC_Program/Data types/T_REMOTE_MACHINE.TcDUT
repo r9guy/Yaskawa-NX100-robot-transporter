@@ -1,0 +1,11 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.16">
+  <DUT Name="T_REMOTE_MACHINE" Id="{f661e22f-1e53-4b40-92b8-3e3c5c739ae6}">
+    <Declaration><![CDATA[TYPE T_REMOTE_MACHINE :
+STRUCT
+	sRemoteHost : STRING(15);
+	nRemotePort 	: UDINT;
+END_STRUCT
+END_TYPE]]></Declaration>
+  </DUT>
+</TcPlcObject>

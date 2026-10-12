@@ -1,0 +1,32 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.16">
+  <GlobalImagePool Name="GlobalImagePool" Id="{fc78c95f-a5ae-4a77-aecd-c933e8f27592}">
+    <XmlArchive>
+      <Data>
+        <o xml:space="preserve" t="GlobalImagePoolObject">
+          <v n="UniqueIdGenerator">"2"</v>
+          <l n="BitmapPool" t="ArrayList" cet="ImagePoolItem">
+            <o>
+              <v n="BitmapID">""</v>
+              <v n="FileID">""</v>
+              <v n="ItemID">2</v>
+            </o>
+          </l>
+          <v n="GuidInit">{3a582771-e0e3-4823-9535-5906297a6dca}</v>
+          <v n="GuidReInit">{002a736b-b9c2-49bf-af34-8e978779ee1f}</v>
+          <v n="GuidExitX">{bad2d523-fef5-4240-853b-3a739fc3ba94}</v>
+          <v n="ValidIds">true</v>
+        </o>
+      </Data>
+      <TypeList>
+        <Type n="ArrayList">System.Collections.ArrayList</Type>
+        <Type n="Boolean">System.Boolean</Type>
+        <Type n="GlobalImagePoolObject">{795b536d-9cec-4fc3-a972-50e1e08d20e8}</Type>
+        <Type n="Guid">System.Guid</Type>
+        <Type n="ImagePoolItem">{215b2719-0347-4e4d-ba85-8bcd66946f66}</Type>
+        <Type n="Int32">System.Int32</Type>
+        <Type n="String">System.String</Type>
+      </TypeList>
+    </XmlArchive>
+  </GlobalImagePool>
+</TcPlcObject>

@@ -1,0 +1,131 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.16">
+  <POU Name="FB_RSTATS" Id="{c028b12c-c8fe-41c5-a84d-46861532cdee}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK FB_RSTATS
+VAR_INPUT
+	bEnable:BOOL;
+	RemoteMachine : T_REMOTE_MACHINE;
+END_VAR
+VAR_OUTPUT
+	bDone:BOOL;
+	bBusy:BOOL;
+	STATUS:T_ST_RSTATS;
+	bError: BOOL;
+END_VAR
+VAR
+	bitset: DWORD;
+	ESERVER: FB_ESERVER;
+	eState:(IDLE,COMPOSE,EXECUTE,PARSE,SUCCESS_DONE,SUCCESS_PARSE,ABNORMAL_ANSWER,SOCKET_ERROR,SERVER_ERROR,DONE,ERROR);
+	Data:ARRAY[1..2] OF BYTE;
+	delimiter: ARRAY[0..100]OF UINT;
+	text: STRING;
+	i: UINT;
+	length: UINT;
+	position: UINT;
+	sDebug: STRING;
+END_VAR]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[eServer.RemoteMachine:=RemoteMachine;
+eServer.eCommand:=E_COMMAND.RSTATS;
+
+
+CASE	eState OF
+IDLE:
+	bBusy:=FALSE;
+	IF	bEnable	THEN
+		eState:=COMPOSE;
+		bDone:=FALSE;
+		bBusy:=TRUE;
+		bError:=FALSE;
+	END_IF;
+COMPOSE:
+	eState:=EXECUTE;
+EXECUTE:
+	eServer.bExecute:=TRUE;
+	eServer();
+	IF	eServer.bDone	THEN
+		eState:=PARSE;
+		eServer.bExecute:=FALSE;
+		eServer();
+	ELSIF	eServer.bError	THEN
+		eState:=SERVER_ERROR;
+		eServer.bExecute:=FALSE;
+		eServer();
+	END_IF;
+PARSE:
+	IF	eServer.sAnswer='0000$R$N' THEN
+		eState:=SUCCESS_DONE;;
+	ELSIF	RIGHT(eServer.sAnswer,1)='$R'	THEN
+		eState:=SUCCESS_PARSE;
+	ELSIF	LEFT(eServer.sAnswer,6)='ERROR: ['	THEN
+		eState:=ABNORMAL_ANSWER;
+	ELSE
+		eState:=SOCKET_ERROR;
+	END_IF;
+SUCCESS_DONE:
+	eState:=DONE;
+SUCCESS_PARSE:
+	text:=eServer.sAnswer;
+
+	FOR i:=0 TO (SIZEOF(delimiter)/2)-1 DO
+		delimiter[i]:=0;
+	END_FOR;
+
+	FOR i:=1 TO (SIZEOF(delimiter)/2)-1 DO
+		delimiter[i]:=delimiter[i-1]+FIND(text,',');
+		IF	delimiter[i]=delimiter[i-1]	THEN
+			delimiter[i]:=delimiter[i]+FIND(text,'$R');
+			EXIT;
+		END_IF;
+		text:=DELETE(text,delimiter[i],1);
+	END_FOR;
+
+
+	FOR i:=1 TO SIZEOF(Data) DO
+		length:=delimiter[i]-delimiter[i-1]-1;
+		position:=delimiter[i-1]+1;
+		sDebug:=(MID(eServer.sAnswer,length,position));
+		Data[i]:=STRING_TO_BYTE(MID(eServer.sAnswer,length,position));
+	END_FOR;
+
+	(*content of Data1*)
+	bitset:=BYTE_TO_DWORD(Data[1]);
+	STATUS.Step:=GETBIT32(bitset,0);
+	STATUS.Cycle:=GETBIT32(bitset,1);
+	STATUS.Auto:=GETBIT32(bitset,2);
+	STATUS.Running:=GETBIT32(bitset,3);
+	STATUS.SafetySpeedOperation:=GETBIT32(bitset,4);
+	STATUS.Teach:=GETBIT32(bitset,5);
+	STATUS.Play:=GETBIT32(bitset,6);
+	STATUS.CommandRemote:=GETBIT32(bitset,7);
+	(*content of Data2*)
+	bitset:=BYTE_TO_DWORD(Data[2]);
+	(*content of Data1*)
+	STATUS.HoldPendant:=GETBIT32(bitset,1);
+	STATUS.HoldExternal:=GETBIT32(bitset,2);
+	STATUS.HoldCommand:=GETBIT32(bitset,3);
+	STATUS.Alarm:=GETBIT32(bitset,4);
+	STATUS.Error:=GETBIT32(bitset,5);
+	STATUS.ServoON:=GETBIT32(bitset,6);
+
+	eState:=DONE;
+
+ABNORMAL_ANSWER:
+	eState:=ERROR;
+SOCKET_ERROR:
+	eState:=ERROR;
+SERVER_ERROR:
+	eState:=ERROR;
+DONE:
+	bDone:=TRUE;
+	eState:=IDLE;
+ERROR:
+	bError:=TRUE;
+	eState:=IDLE;
+END_CASE;]]></ST>
+    </Implementation>
+    <LineIds Name="FB_RSTATS">
+      <LineId Id="23" Count="97" />
+    </LineIds>
+  </POU>
+</TcPlcObject>

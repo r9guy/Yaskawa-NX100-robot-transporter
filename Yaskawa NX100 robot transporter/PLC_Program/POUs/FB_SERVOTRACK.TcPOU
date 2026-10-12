@@ -1,0 +1,198 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.16">
+  <POU Name="FB_SERVOTRACK" Id="{d2bfa6a8-2aaa-4295-91e3-b2cc1d775700}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK FB_SERVOTRACK
+VAR_INPUT
+	Enable:BOOL;
+	ResetBit:BOOL;
+	EnableMotion:BOOL;
+	TargetPosition:LREAL;
+	PositionReset:BOOL;
+	PositionResetValue:LREAL;
+	EncoderReset: BOOL;
+
+	EncoderScalingFactor:LREAL;
+	LimitPos:LREAL;
+	LimitNeg:LREAL;
+
+	JogPositive:BOOL;
+	JogNegative:BOOL;
+
+	AxisPtr:POINTER TO AXIS_REF;
+END_VAR
+VAR_OUTPUT
+	CurrentPosition:LREAL;
+	bBusy:BOOL;
+	bError:BOOL;
+	inPosition:BOOL;
+END_VAR
+VAR
+	eState:(
+	DISABLED,
+	STANDSTILL,
+	SET_POSITION_OFFSET,
+	SET_ENCODER,
+	HOMING,
+	JOGGING,
+	MOVE_ABSOLUTE,
+	MOVE_RELATIVE,
+	STOPPING,
+	UNLOCK,
+	ERROR_STOP
+		);
+	Power:MC_Power;
+	Reset:MC_Reset;
+	SetPosition:MC_SetPosition;
+	Encoder:MC_SetEncoderScalingFactor;
+
+	Jog:MC_Jog;
+	MoveAbsolute: MC_MoveAbsolute;
+	ActualPosition:MC_ReadActualPosition;
+
+	FB_EncoderScalingFactor:MC_ReadParameter;
+	FB_SWLimitPos:MC_ReadParameter ;
+	FB_SWLimitNeg:MC_ReadParameter ;
+	Stop: MC_Stop;
+END_VAR
+
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[Power.Enable_Positive:=TRUE;
+Power.Enable_Negative:=TRUE;
+Power.BufferMode:=MC_Aborting;
+MoveAbsolute.Execute:=FALSE;
+(******************************************************************)
+FB_EncoderScalingFactor.ReadMode:=READMODE_CYCLIC;
+FB_EncoderScalingFactor.Enable:=TRUE;
+FB_EncoderScalingFactor.ParameterNumber:=AxisEncoderScalingFactor;
+FB_EncoderScalingFactor(AXIS:=AxisPtr^);
+EncoderScalingFactor:=FB_EncoderScalingFactor.Value;
+(******************************************************************)
+FB_SWLimitPos.ReadMode:=READMODE_CYCLIC;
+FB_SWLimitPos.Enable:=TRUE;
+FB_SWLimitPos.ParameterNumber:=SWLimitPos;
+FB_SWLimitPos(AXIS:=AxisPtr^);
+LimitPos:=FB_SWLimitPos.Value;
+(******************************************************************)
+FB_SWLimitNeg.ReadMode:=READMODE_CYCLIC;
+FB_SWLimitNeg.Enable:=TRUE;
+FB_SWLimitNeg.ParameterNumber:=SWLimitNeg;
+FB_SWLimitNeg(AXIS:=AxisPtr^);
+LimitNeg:=FB_SWLimitNeg.Value;
+(******************************************************************)
+ActualPosition(AXIS:=AxisPtr^,Enable:=TRUE);
+CurrentPosition:=ActualPosition.Position;
+(******************************************************************)
+CASE eState OF
+	DISABLED:
+		IF	Power.Status	THEN
+			eState:=STANDSTILL;
+		END_IF;
+	(******************************************************************)
+	STANDSTILL:
+		bError:=FALSE;
+		bBusy:=FALSE;
+		IF PositionReset THEN
+			eState:=SET_POSITION_OFFSET;
+		ELSIF EncoderReset THEN
+			eState:=SET_ENCODER;
+		ELSIF JogNegative OR JogPositive THEN
+			eState:=JOGGING;
+			bBusy:=TRUE;
+		ELSIF EnableMotion THEN
+			eState:=MOVE_ABSOLUTE;
+			bBusy:=TRUE;
+		END_IF;
+	(******************************************************************)
+	SET_POSITION_OFFSET:
+		SetPosition.Execute:=TRUE;
+		SetPosition.Position:=PositionResetValue;
+		IF SetPosition.Done THEN
+			SetPosition.Execute:=FALSE;
+			eState:=DISABLED;
+		END_IF;
+	(******************************************************************)
+	SET_ENCODER:
+		Encoder.Execute:=TRUE;
+		Encoder.ScalingFactor:=EncoderScalingFactor;
+		IF Encoder.Done THEN
+			Encoder.Execute:=FALSE;
+			eState:=STANDSTILL;
+		ELSIF Encoder.Error THEN
+			Encoder.Execute:=FALSE;
+			eState:=STANDSTILL;
+		END_IF;
+	(******************************************************************)
+	JOGGING:
+		Jog.JogForward:=JogPositive;
+		Jog.JogBackwards:=JogNegative;
+		Jog.Mode:=MC_JOGMODE_STANDARD_FAST;
+		eState:=STANDSTILL;
+	(******************************************************************)
+	MOVE_ABSOLUTE:
+		MoveAbsolute.Position:=TargetPosition;
+		MoveAbsolute.Velocity:=300;
+		MoveAbsolute.Execute:=TRUE;
+		IF MoveAbsolute.Done THEN
+			MoveAbsolute.Execute:=FALSE;
+			eState:=DISABLED;
+		ELSIF MoveAbsolute.Error THEN
+			eState:=ERROR_STOP;
+		END_IF;
+	(******************************************************************)
+	MOVE_RELATIVE:
+		;
+	(******************************************************************)
+	STOPPING:
+		Stop.Execute:=TRUE;
+		MoveAbsolute.Execute:=FALSE;
+		IF	Stop.Done	THEN
+			eState:=UNLOCK;
+			Stop.Execute:=FALSE;
+		END_IF;
+	UNLOCK:
+		IF	NOT	Stop.Busy	THEN
+			eState:=STANDSTILL;
+		END_IF;
+	ERROR_STOP:
+		bError:=TRUE;
+		Reset.Execute:=ResetBit;
+		Reset(Axis:=AxisPtr^);
+		IF Reset.Done THEN
+			eState:=DISABLED;
+		END_IF;
+	(******************************************************************)
+	(******************************************************************)
+	ELSE
+		;
+END_CASE;
+
+IF	Enable	THEN
+	Power.Enable:=TRUE;
+ELSE
+	IF	eState=STANDSTILL	THEN
+		Power.Enable:=FALSE;
+		eState:=DISABLED;
+	ELSE
+		eState:=STOPPING;
+	END_IF;
+END_IF;
+
+Power(Axis:=AxisPtr^);
+IF	Power.Error THEN
+	eState:=ERROR_STOP;
+END_IF;
+
+
+Stop(Axis:=AxisPtr^);
+Encoder(Axis:=AxisPtr^);
+SetPosition(Axis:=AxisPtr^);
+Jog(Axis:=AxisPtr^);
+MoveAbsolute(Axis:=AxisPtr^);
+]]></ST>
+    </Implementation>
+    <LineIds Name="FB_SERVOTRACK">
+      <LineId Id="55" Count="132" />
+    </LineIds>
+  </POU>
+</TcPlcObject>

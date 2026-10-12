@@ -1,0 +1,58 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.16">
+  <DUT Name="E_COMMAND" Id="{ccbff29b-8033-4a6e-b967-bb358711663d}">
+    <Declaration><![CDATA[{attribute 'qualified_only'}
+{attribute 'strict'}
+TYPE E_COMMAND :
+	(
+	RSTATS,
+	RALARM,
+	RPOSJ,
+	RPOSC,
+	RJSEQ,
+	JWAIT,
+	RGROUP,
+	RJDIR,
+	RUFRAME,
+	SAVEV,
+	HOLD,
+	RESET,
+	CANCEL,
+	MODE,
+	CYCLE,
+	SVON,
+	HLOCK,
+	MDSP,
+	CGROUP,
+	CTASK,
+	START,
+	START2,
+	MOVJ,
+	MOVL,
+	IMOV,
+	PMOVJ,
+	PMOVL,
+	DELETE,
+	CVTRJ,
+	CVTSJ,
+	WUFRAME,
+	LOADV,
+	LOADV2,
+	SETMJ,
+	JSEQ,
+	IOREAD,
+	IOWRITE,
+	IOWRITE2,
+	IOWRITE3,
+	IOWRITE4,
+	IOWRITE5,
+	IOWRITE6,
+	IOWRITE7,
+	IOWRITE8,
+	IOWRITE9,
+	IOWRITE10
+	);
+
+END_TYPE]]></Declaration>
+  </DUT>
+</TcPlcObject>

@@ -1,0 +1,17 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.16">
+  <DUT Name="T_ST_INCUBE" Id="{5938a658-d0be-4490-97a1-38220aa5c211}">
+    <Declaration><![CDATA[TYPE T_ST_INCUBE :
+STRUCT
+	IN_CUBE_1:BOOL;
+	IN_CUBE_2:BOOL;
+	IN_CUBE_3:BOOL;
+	IN_CUBE_4:BOOL;
+	IN_CUBE_5: BOOL;
+	IN_CUBE_6:BOOL;
+	IN_CUBE_7:BOOL;
+	IN_CUBE_8:BOOL;
+END_STRUCT
+END_TYPE]]></Declaration>
+  </DUT>
+</TcPlcObject>

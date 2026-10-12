@@ -1,0 +1,170 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.16">
+  <POU Name="MAIN" Id="{74b570fb-66eb-428c-b4db-2749a6e63c6b}" SpecialFunc="None">
+    <Declaration><![CDATA[PROGRAM MAIN
+VAR
+	RemoteMachine: T_REMOTE_MACHINE;
+	OPCODE: (
+	STATUS,
+	ALARM,
+	IN_CUBE,
+	TRAVEL_REQUEST,
+	TARGET_POSITION,
+	LOAD_CURRENT_POSITION,
+	LOAD_ERROR,
+	LOAD_BUSY,
+	LOAD_IN_POSITION,
+	CANCEL_TRAVEL_REQUEST,
+	ERROR
+);
+
+	RSTATS: FB_RSTATS;
+	RJSEQ: FB_RJSEQ;
+	RALARM: FB_RALARM;
+	LOADV: FB_LOADV;
+	SAVEV:FB_SAVEV;
+	IOREAD: FB_IOREAD;
+	Axis:AXIS_REF;
+	Track:FB_SERVOTRACK;
+
+	TargetPosition:REAL;
+	CurrentPosition:REAL;
+	TravelRequest:BOOL;
+	InCube:BOOL;
+END_VAR]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[RemoteMachine.sRemoteHost:='192.168.0.3';
+RemoteMachine.nRemotePort:=80;
+
+RSTATS.RemoteMachine:=RemoteMachine;
+RALARM.RemoteMachine:=RemoteMachine;
+RJSEQ.RemoteMachine:=RemoteMachine;
+LOADV.RemoteMachine:=RemoteMachine;
+SAVEV.RemoteMachine:=RemoteMachine;
+IOREAD.RemoteMachine:=RemoteMachine;
+
+
+CASE OPCODE OF
+	STATUS:
+		RSTATS.bEnable:=TRUE;
+		RSTATS();
+
+		IF RSTATS.bDone THEN
+			IF 	RSTATS.STATUS.Alarm	THEN
+				OPCODE:=ALARM;
+			ELSIF RSTATS.STATUS.CommandRemote	THEN
+				OPCODE:=LOAD_CURRENT_POSITION;
+			ELSE
+				OPCODE:=IN_CUBE;
+			END_IF;
+		ELSIF	RSTATS.bError	THEN
+			OPCODE:=ERROR;
+		END_IF;
+
+(****************************************************************************************)
+	ALARM:
+		RALARM.bEnable:=TRUE;
+		RALARM();
+		IF RALARM.bDone THEN
+			OPCODE:=STATUS;
+		ELSIF	RALARM.bError	THEN
+			OPCODE:=ERROR;
+		END_IF;
+
+(****************************************************************************************)
+	IN_CUBE:
+		(*	Spesial Outputs	50080 to 50117: IN-CUBE	*)
+		IOREAD.StartContactPoint:=50080;
+		IOREAD.NumberOfContactPoints:=8;
+		IOREAD.bEnable:=TRUE;
+		IOREAD();
+		IF IOREAD.bDone THEN
+			OPCODE:=TRAVEL_REQUEST;
+			IF	IOREAD.ContactPoints[0]<>0	THEN
+				InCube:=TRUE;
+			ELSE
+				InCube:=FALSE;
+			END_IF;
+		ELSIF	IOREAD.bError	THEN
+			InCube:=FALSE;
+			OPCODE:=ERROR;
+		END_IF;
+
+	(******************************************************************************************************)
+	TRAVEL_REQUEST:
+		(*	get travel request from variable B000 *)
+		SAVEV.Variable_Type:=BYTE_TYPE;
+		SAVEV.VariableNumber:=0;
+		SAVEV.bEnable:=TRUE;
+		SAVEV();
+		IF SAVEV.bDone THEN
+			OPCODE:=TARGET_POSITION;
+			IF	SAVEV.ValueByte=0	THEN
+				TravelRequest:=FALSE;
+			ELSE
+				TravelRequest:=TRUE;
+			END_IF;
+		ELSIF	SAVEV.bError	THEN
+			OPCODE:=ERROR;
+		END_IF;
+	(****************************************************************************************)
+	TARGET_POSITION:
+		(*	get target position  from variable R000 *)
+		SAVEV.Variable_Type:=3;
+		SAVEV.VariableNumber:=0;
+		SAVEV.bEnable:=TRUE;
+		SAVEV();
+		IF SAVEV.bDone THEN
+			TargetPosition:=SAVEV.ValueReal;
+			OPCODE:=STATUS;
+		ELSIF	SAVEV.bError	THEN
+			OPCODE:=ERROR;
+		END_IF;
+	(****************************************************************************************)
+	LOAD_CURRENT_POSITION:
+		(*	Set variable 	R001=CurrentPosition	*)
+		LOADV.Variable_Type:=REAL_TYPE;
+		LOADV.VariableNumber:=1;
+		LOADV.ValueReal:=Track.CurrentPosition;
+		LOADV.bEnable:=TRUE;
+		LOADV();
+		IF LOADV.bDone THEN
+			OPCODE:=IN_CUBE;
+		ELSIF	LOADV.bError	THEN
+			OPCODE:=ERROR;
+		END_IF;
+(****************************************************************************************)
+	CANCEL_TRAVEL_REQUEST:
+		(*	Set variable 	B000=CancelTravelReques	*)
+		LOADV.Variable_Type:=BYTE_TYPE;
+		LOADV.VariableNumber:=0;
+		LOADV.ValueByte:=0;
+		LOADV.bEnable:=TRUE;
+		LOADV();
+		IF LOADV.bDone THEN
+			OPCODE:=STATUS;
+		ELSIF	LOADV.bError	THEN
+			OPCODE:=ERROR;
+		END_IF;
+	ERROR:
+		OPCODE:=STATUS;;
+END_CASE;
+(****************************************************************************************)
+IF	RSTATS.STATUS.ServoON	AND	InCube	THEN
+	TRACK.Enable:=TRUE;
+ELSE
+	TRACK.Enable:=FALSE;
+END_IF
+CurrentPosition:=Track.CurrentPosition;
+Track.TargetPosition:=TargetPosition;
+Track.EnableMotion:=TravelRequest;
+
+
+Track.AxisPtr:=ADR(Axis);
+TRACK();]]></ST>
+    </Implementation>
+    <LineIds Name="MAIN">
+      <LineId Id="31" Count="128" />
+    </LineIds>
+  </POU>
+</TcPlcObject>

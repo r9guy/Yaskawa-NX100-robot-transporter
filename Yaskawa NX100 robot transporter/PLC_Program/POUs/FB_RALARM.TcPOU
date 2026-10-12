@@ -1,0 +1,109 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.16">
+  <POU Name="FB_RALARM" Id="{50164f48-e591-4b40-985a-09e4e1f8855e}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK FB_RALARM
+VAR_INPUT
+	bEnable:BOOL;
+	RemoteMachine : T_REMOTE_MACHINE;
+END_VAR
+VAR_OUTPUT
+	bDone:BOOL;
+	Data:ARRAY[1..10] OF WORD;
+	bBusy: BOOL;
+	bError: BOOL;
+END_VAR
+VAR
+	ESERVER: FB_ESERVER;
+	eState:(IDLE,COMPOSE,EXECUTE,PARSE,SUCCESS_DONE,SUCCESS_PARSE,ABNORMAL_ANSWER,SOCKET_ERROR,SERVER_ERROR,DONE,ERROR);
+	delimiter: ARRAY[0..100]OF UINT;
+	sAnswer: STRING;
+	i: UINT;
+	length: UINT;
+	position: UINT;
+	sDebug: STRING;
+END_VAR]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[eServer.RemoteMachine:=RemoteMachine;
+eServer.eCommand:=E_COMMAND.RALARM;
+
+
+CASE	eState OF
+IDLE:
+	bBusy:=FALSE;
+	IF	bEnable	THEN
+		eState:=COMPOSE;
+		bDone:=FALSE;
+		bBusy:=TRUE;
+		bError:=FALSE;
+	END_IF;
+COMPOSE:
+	eState:=EXECUTE;
+EXECUTE:
+	eServer.bExecute:=TRUE;
+	eServer();
+	IF	eServer.bDone	THEN
+		eState:=PARSE;
+		eServer.bExecute:=FALSE;
+		eServer();
+	ELSIF	eServer.bError	THEN
+		eState:=SERVER_ERROR;
+		eServer.bExecute:=FALSE;
+		eServer();
+	END_IF;
+PARSE:
+	IF	eServer.sAnswer='0000$R$N' THEN
+		eState:=SUCCESS_DONE;;
+	ELSIF	RIGHT(eServer.sAnswer,1)='$R'	THEN
+		eState:=SUCCESS_PARSE;
+	ELSIF	LEFT(eServer.sAnswer,6)='ERROR: ['	THEN
+		eState:=ABNORMAL_ANSWER;
+	ELSE
+		eState:=SOCKET_ERROR;
+	END_IF;
+SUCCESS_DONE:
+	eState:=DONE;
+SUCCESS_PARSE:
+	sAnswer:=eServer.sAnswer;
+
+	FOR i:=0 TO (SIZEOF(delimiter)/2)-1 DO
+		delimiter[i]:=0;
+	END_FOR;
+
+	FOR i:=1 TO (SIZEOF(delimiter)/2)-1 DO
+		delimiter[i]:=delimiter[i-1]+FIND(sAnswer,',');
+		IF	delimiter[i]=delimiter[i-1]	THEN
+			delimiter[i]:=delimiter[i]+FIND(sAnswer,'$R');
+			EXIT;
+		END_IF;
+		sAnswer:=DELETE(sAnswer,delimiter[i],1);
+	END_FOR;
+
+
+	FOR i:=1 TO SIZEOF(Data)/2 DO
+		length:=delimiter[i]-delimiter[i-1]-1;
+		position:=delimiter[i-1]+1;
+		sDebug:=(MID(eServer.sAnswer,length,position));
+		Data[i]:=STRING_TO_WORD(MID(eServer.sAnswer,length,position));
+	END_FOR;
+
+	eState:=DONE;
+
+ABNORMAL_ANSWER:
+	eState:=ERROR;
+SOCKET_ERROR:
+	eState:=ERROR;
+SERVER_ERROR:
+	eState:=ERROR;
+DONE:
+	bDone:=TRUE;
+	eState:=IDLE;
+ERROR:
+	bError:=TRUE;
+	eState:=IDLE;
+END_CASE;]]></ST>
+    </Implementation>
+    <LineIds Name="FB_RALARM">
+      <LineId Id="21" Count="77" />
+    </LineIds>
+  </POU>
+</TcPlcObject>

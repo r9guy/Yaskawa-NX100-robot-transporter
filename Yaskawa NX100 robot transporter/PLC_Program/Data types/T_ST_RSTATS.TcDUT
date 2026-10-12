@@ -1,0 +1,23 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.16">
+  <DUT Name="T_ST_RSTATS" Id="{7182953c-46d8-41af-b44e-5f34641ab097}">
+    <Declaration><![CDATA[TYPE T_ST_RSTATS :
+STRUCT
+	Step:BOOL;
+	Cycle:BOOL;
+	Auto:BOOL;
+	Running:BOOL;
+	SafetySpeedOperation:BOOL;
+	Teach:BOOL;
+	Play:BOOL;
+	CommandRemote:BOOL;
+	HoldPendant,
+	HoldExternal,
+	HoldCommand,
+	Alarm:BOOL;
+	Error:BOOL;
+	ServoON:BOOL;
+END_STRUCT
+END_TYPE]]></Declaration>
+  </DUT>
+</TcPlcObject>

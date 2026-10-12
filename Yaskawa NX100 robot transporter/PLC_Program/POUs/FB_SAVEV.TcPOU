@@ -1,0 +1,132 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.16">
+  <POU Name="FB_SAVEV" Id="{961f2137-29de-4906-abea-a3b876aced0f}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK FB_SAVEV
+VAR_INPUT
+	bEnable:BOOL;
+	RemoteMachine : T_REMOTE_MACHINE;
+	Variable_Type:E_DATA_TYPE;
+	(*Appropriate to Variable type Value should be Used. rest of values will have no effect*)
+	VariableNumber:BYTE;
+END_VAR
+VAR_OUTPUT
+	bDone:BOOL;
+	bBusy: BOOL;
+	bError: BOOL;
+	ValueByte:BYTE;
+	ValueInteger:INT;
+	ValueDouble:DINT;
+	ValueReal:REAL;
+END_VAR
+VAR
+	ESERVER: FB_ESERVER;
+	eState:(IDLE,COMPOSE,EXECUTE,PARSE,SUCCESS_DONE,SUCCESS_PARSE,ABNORMAL_ANSWER,SOCKET_ERROR,SERVER_ERROR,DONE,ERROR);
+	sAnswer: STRING(255);
+	(*data starts with one because it's documented in yaskawas manual with index starting from 1*)
+	Data:ARRAY[1..100] OF STRING;
+	DataCount: UINT;
+	(*for one delimiter "," allways devides two data, so the data array is always +1 quantity of delimiter *)
+	Delimiter: ARRAY[0..98]OF UINT;
+	DelimiterCount: UINT;
+	length: UINT;
+	position:UINT;
+	integer: DINT;
+	fraction: REAL;
+
+END_VAR]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[eServer.RemoteMachine:=RemoteMachine;
+eServer.eCommand:=E_COMMAND.SAVEV;
+
+
+CASE	eState OF
+IDLE:
+	bBusy:=FALSE;
+	IF	bEnable	THEN
+		eState:=COMPOSE;
+		bDone:=FALSE;
+		bBusy:=TRUE;
+		bError:=FALSE;
+	END_IF;
+COMPOSE:
+	(*	if data to be sent compose eServer.sCommandData to contain CommandData string	*)
+	(*	Do not forget to strt with eServer.sCommandData:=''; to avoid send buffer repetition	*)
+	eServer.sCommandData:='';
+	eServer.sCommandData:=CONCAT(eServer.sCommandData,INT_TO_STRING(Variable_type));
+	eServer.sCommandData:=CONCAT(eServer.sCommandData,',');
+	eServer.sCommandData:=CONCAT(eServer.sCommandData,BYTE_TO_STRING(VariableNumber));
+	eServer.sCommandData:=CONCAT(eServer.sCommandData,'$R');
+	eState:=EXECUTE;
+EXECUTE:
+	eServer.bExecute:=TRUE;
+	eServer();
+	IF	eServer.bDone	THEN
+		eState:=PARSE;
+		eServer.bExecute:=FALSE;
+		eServer();
+	ELSIF	eServer.bError	THEN
+		eState:=SERVER_ERROR;
+		eServer.bExecute:=FALSE;
+		eServer();
+	END_IF;
+PARSE:
+	IF	eServer.sAnswer='0000$R$N' THEN
+		eState:=SUCCESS_DONE;;
+	ELSIF	RIGHT(eServer.sAnswer,1)='$R'	THEN
+		eState:=SUCCESS_PARSE;
+	ELSIF	LEFT(eServer.sAnswer,6)='ERROR: ['	THEN
+		eState:=ABNORMAL_ANSWER;
+	ELSE
+		eState:=SOCKET_ERROR;
+	END_IF;
+SUCCESS_DONE:
+	eState:=DONE;
+SUCCESS_PARSE:
+		(*here is a code responsible for Data array generation. in case if returned answer contains only one data then it is being written at Data[1] *)
+		sAnswer:=eServer.sAnswer;
+		DelimiterCount:=0;
+		DataCount:=1;
+		WHILE	FIND(sAnswer,',')>0	DO
+			Delimiter[DelimiterCount]:=FIND(sAnswer,',');
+			Data[DataCount]:=LEFT(sAnswer,Delimiter[DelimiterCount]-1);
+			sAnswer:=DELETE(sAnswer,Delimiter[DelimiterCount],1);
+			DataCount:=DataCount+1;
+			DelimiterCount:=DelimiterCount+1;
+		END_WHILE;
+		Data[DataCount]:=LEFT(sAnswer,FIND(sAnswer,'$R')-1);
+
+		(*the following code if custom for every command, it simply assignes Data to Command specefic OUTPUT SIGNALS*)
+		CASE	Variable_Type OF
+			BYTE_TYPE:
+					ValueByte:=STRING_TO_BYTE(Data[1]);
+			INTEGER_TYPE:
+					ValueInteger:=STRING_TO_INT(Data[1]);
+			DOUBLE_TYPE:
+					ValueDouble:=STRING_TO_DINT(Data[1]);
+			REAL_TYPE:
+					ValueReal:=STRING_TO_REAL(Data[1]);
+			ROBOT_AXIS_TYPE:;
+			BASE_AXIS_TYPE:;
+			STATION_AXIS_TYPE:;
+		END_CASE;
+
+		eState:=DONE;
+ABNORMAL_ANSWER:
+	eState:=ERROR;
+SOCKET_ERROR:
+	eState:=ERROR;
+SERVER_ERROR:
+	eState:=ERROR;
+DONE:
+	bDone:=TRUE;
+	eState:=IDLE;
+ERROR:
+	bError:=TRUE;
+	eState:=IDLE;
+END_CASE;]]></ST>
+    </Implementation>
+    <LineIds Name="FB_SAVEV">
+      <LineId Id="33" Count="88" />
+    </LineIds>
+  </POU>
+</TcPlcObject>

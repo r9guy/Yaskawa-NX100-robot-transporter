@@ -1,0 +1,262 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.16">
+  <POU Name="FB_ESERVER" Id="{ce74bc99-c35d-4a22-94ef-d92772a39be8}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK FB_ESERVER
+VAR_INPUT
+	bExecute:BOOL;
+	RemoteMachine : T_REMOTE_MACHINE;
+	eCommand:E_COMMAND;
+	sCommandData:STRING(255);
+END_VAR
+VAR_OUTPUT
+	SrvVer_Maj:INT;
+	SrvVer_Min:INT;
+	sStartResponse:STRING(255);
+	sCommandResponse:STRING(255);
+	sAnswer:STRING(255);
+	bDone:BOOL;
+	bBusy: BOOL;
+	bError: BOOL;
+END_VAR
+VAR
+	eState:(
+	IDLE,
+	CONNECT_SOCKET,
+	START,
+	START_WAIT,
+	RES_START_EX,
+	RES_START_ACK,
+	COMMAND_SEND,
+	RES_COMMAND_EX,
+	RES_COMMAND_ACK,
+	COMMAND_DATA,
+	ANSWER_EX,ANSWER_ACK,
+	CLOSE_SOCKET,
+	SUCCESS,
+	ERROR);
+
+	Client:FB_ClientServerConnection;
+	Receive:FB_SocketReceive;
+	Send:FB_SocketSend;
+	send_buffer:  STRING(255);
+	F_TRIGGER: F_TRIG;
+	Command:T_COMMAND;
+	pByte: POINTER TO BYTE;
+	i:UINT;
+	R_TRIGGER: R_TRIG;
+	Timer: TON;
+	b: BOOL;
+END_VAR]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[Timer.PT:=t#500ms;
+Receive.bExecute:=FALSE;
+CASE eState OF
+(******************************************************************************************)
+IDLE:
+	bBusy:=FALSE;
+	IF bExecute THEN
+		bDone:=FALSE;
+		bError:=FALSE;
+		bBusy:=TRUE;
+		eState:=CONNECT_SOCKET;
+		Command:=F_DECODE_COMMAND(eCommand,sCommandData);
+	END_IF;
+(******************************************************************************************)
+CONNECT_SOCKET:
+	Client.sRemoteHost:=RemoteMachine.sRemoteHost;
+	Client.nRemotePort:=RemoteMachine.nRemotePort;
+	Client.bEnable:=TRUE;
+	IF Client.eState=eSOCKET_CONNECTED THEN
+		eState:=START;
+		Send.hSocket:=Client.hSocket;
+		Receive.hSocket:=Client.hSocket;
+		Timer.IN:=FALSE;
+	ELSE
+		Timer.IN:=TRUE;
+	END_IF;
+
+(******************************************************************************************)
+START:
+	send_buffer:='CONNECT Robot_access$R$N';
+	send.pSrc:=ADR(send_buffer);
+	send.cbLen:=LEN(send_buffer);
+	send.bExecute:=TRUE;
+	send();
+	F_TRIGGER(CLK:=send.bBusy);
+	IF F_TRIGGER.Q THEN
+		send.bExecute:=FALSE;
+		send();
+		eState:=RES_START_EX;
+		pByte:=ADR(sStartResponse);
+		FOR i:=0 TO 255 DO
+			pByte^:=0;
+			pByte:=pByte+1;
+		END_FOR;
+	END_IF;
+(******************************************************************************************)
+RES_START_EX:
+	Receive.cbLen:=256;
+	Receive.pDest:=ADR(sStartResponse);
+	Receive.bExecute:=TRUE;
+	Receive();
+	F_TRIGGER(CLK:= Receive.bBusy);
+	IF F_TRIGGER.Q THEN
+		eState:=RES_START_ACK;
+		Receive.bExecute:=FALSE;
+		Receive();
+	ELSIF Receive.bError	THEN
+		eState:=ERROR;
+		Receive.bExecute:=FALSE;
+		Receive();
+	END_IF;
+RES_START_ACK:
+	Timer.IN:=FALSE;
+	IF Receive.nRecBytes<>0 THEN
+		IF	LEFT(sStartResponse,3)='OK:'	THEN
+			eState:=COMMAND_SEND;
+			SrvVer_Maj:=STRING_TO_INT(MID(sStartResponse,FIND(sStartResponse,'.')-FIND(sStartResponse,'(')-1,FIND(sStartResponse,'(')+1));
+			SrvVer_Min:=STRING_TO_INT(MID( sStartResponse ,FIND( sStartResponse ,')')-FIND( sStartResponse ,'.')-1,FIND( sStartResponse ,'.')+1));
+		ELSIF	LEFT(sStartResponse,3)='NG:' THEN
+			eState:=ERROR;
+		END_IF;
+	ELSE
+		eState:=RES_START_EX;
+		Timer.IN:=TRUE;
+	END_IF;
+(******************************************************************************************)
+COMMAND_SEND:
+	send_buffer:='HOSTCTRL_REQUEST ';
+	send_buffer:=CONCAT(send_buffer,Command.NAME);
+	send_buffer:=CONCAT(send_buffer, ' ');
+	send_buffer:=CONCAT(send_buffer,INT_TO_STRING(Command.SIZE));
+	send_buffer:=CONCAT(send_buffer,'$R$N');
+	send.cbLen:=LEN(send_buffer);
+	send.bExecute:=TRUE;
+	send();
+	F_TRIGGER(CLK:=send.bBusy);
+	IF	F_TRIGGER.Q	THEN
+		send.bExecute:=FALSE;
+		send();
+		eState:=RES_COMMAND_EX;
+		pByte:=ADR(sCommandResponse);
+		FOR i:=0 TO 255 DO
+			pByte^:=0;
+			pByte:=pByte+1;
+		END_FOR;
+	END_IF;
+(******************************************************************************************)
+RES_COMMAND_EX:
+	Receive.pDest:=ADR(sCommandResponse);
+	Receive.bExecute:=TRUE;
+	Receive();
+	F_TRIGGER(CLK:= Receive.bBusy);
+	IF F_TRIGGER.Q THEN
+		eState:=RES_COMMAND_ACK;
+		Receive.bExecute:=FALSE;
+		Receive();
+	ELSIF Receive.bError	THEN
+		eState:=ERROR;
+		Receive.bExecute:=FALSE;
+		Receive();
+	END_IF;
+RES_COMMAND_ACK:
+	Timer.IN:=FALSE;
+	IF Receive.nRecBytes<>0 THEN
+		IF RIGHT(sCommandResponse,2)='$R$N' THEN
+			IF	LEFT(sCommandResponse,3)='OK:'	THEN
+				IF	Command.SIZE=0	THEN
+					eState:=ANSWER_EX;
+				ELSE
+					eState:=COMMAND_DATA;
+				END_IF;
+				pByte:=ADR(sAnswer);
+				FOR i:=0 TO 255 DO
+					pByte^:=0;
+					pByte:=pByte+1;
+				END_FOR;
+			ELSIF	LEFT(sCommandResponse,3)='NG:' THEN
+				eState:=ERROR;
+			END_IF;
+		END_IF;
+	ELSE
+		eState:=RES_COMMAND_EX;
+		Timer.IN:=TRUE;
+	END_IF;
+(******************************************************************************************)
+COMMAND_DATA:
+	send_buffer:=sCommandData;
+	send.cbLen:=LEN(sCommandData);
+	send.bExecute:=TRUE;
+	send();
+	F_TRIGGER(CLK:=send.bBusy);
+	IF	F_TRIGGER.Q	THEN
+		eState:=ANSWER_EX;
+		send.bExecute:=FALSE;
+		send();
+	END_IF;
+	Send();
+(******************************************************************************************)
+ANSWER_EX:
+	receive.pDest:=ADR(sAnswer);
+	receive.bExecute:=TRUE;
+	Receive();
+	F_TRIGGER(CLK:= Receive.bBusy);
+	IF F_TRIGGER.Q THEN
+		eState:=ANSWER_ACK;
+		Receive.bExecute:=FALSE;
+		Receive();
+	END_IF;
+ANSWER_ACK:
+	IF Receive.nRecBytes<>0 THEN
+		Timer.IN:=FALSE;
+		IF	RIGHT(sAnswer,1)='$R' OR RIGHT(sAnswer,6)='0000$R$N' THEN
+			eState:=CLOSE_SOCKET;
+			receive.bExecute:=FALSE;
+		ELSIF	LEFT(sAnswer,6)='ERROR:' THEN
+			eState:=ERROR;
+			receive.bExecute:=FALSE;
+		END_IF;
+	ELSE
+		Timer.IN:=TRUE;
+		eState:=ANSWER_EX;
+	END_IF
+CLOSE_SOCKET:
+	client.bEnable:=FALSE;
+	eState:=SUCCESS;
+	IF client.eState=eSOCKET_DISCONNECTED THEN
+		eState:=SUCCESS;
+	END_IF;
+SUCCESS:
+	bDone:=TRUE;
+	bBusy:=FALSE;
+	eState:=IDLE;
+(******************************************************************************************)
+ERROR:
+	Timer.IN:=FALSE;
+	client.bEnable:=FALSE;
+	bError:=TRUE;
+	IF client.eState=eSOCKET_DISCONNECTED THEN
+		eState:=IDLE;
+	END_IF;
+END_CASE;
+
+(*in case it receiving timout triggered*)
+Timer();
+IF	Timer.Q	THEN
+	eState:=ERROR;
+END_IF;
+
+
+Client();
+Receive();
+
+
+
+
+]]></ST>
+    </Implementation>
+    <LineIds Name="FB_ESERVER">
+      <LineId Id="46" Count="205" />
+    </LineIds>
+  </POU>
+</TcPlcObject>
